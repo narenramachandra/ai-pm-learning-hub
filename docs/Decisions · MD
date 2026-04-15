@@ -1,0 +1,19 @@
+# Decision Log
+
+Every non-obvious choice made during design and build, with rationale. 
+This is the document that shows product thinking — not just what was built, but why.
+
+---
+
+| Date | Decision | Alternatives Considered | Rationale |
+|---|---|---|---|
+| Apr 2026 | Use Haiku 4.5, not Sonnet | Sonnet 4.6 ($3/$15/MTok) | Haiku is fast and cheap enough (~$1/$5) for Q&A synthesis. Sonnet overkill for this use case. Can upgrade later if quality is insufficient. |
+| Apr 2026 | Lenny MCP over GitHub transcript repo | GitHub repo (269 transcripts), downloaded Dropbox files | MCP has 640 items (newsletter + podcast), already live, zero setup. GitHub repo is podcast-only and requires local setup. MCP wins on both breadth and ease. |
+| Apr 2026 | Aakash free RSS for MVP, paid archive later | Scrape paid content, skip Aakash v1 | MVP should be shippable without blocking on setup. RSS gets us ~70% of value. Substack2Markdown handles full archive when needed (before unsubscribing). |
+| Apr 2026 | Speaker-level attribution, not creator-level | Creator-level only (e.g., "Lenny's Podcast") | Lenny's MCP returns a `guest` field per episode. Not using it would waste the best signal in the data. "Brian Balfour said X" is more useful than "Lenny's Podcast said X." |
+| Apr 2026 | Both sources always queried, never pick-one | Let user select source per query | More cognitive load for the user, less value. The whole point is synthesis across sources. |
+| Apr 2026 | Inline tag + source card (both) | Inline only, or source card only | Inline tags let you read without interruption. Source cards let you go deeper. They serve different moments. Both costs almost nothing to implement. |
+| Apr 2026 | Single React artifact, no backend | Hosted web app (Vercel), local Python app | Personal tool. Zero maintenance, zero infra cost, zero deployment risk. Artifact storage handles persistence. Revisit if making public. |
+| Apr 2026 | Learning log in artifact storage | External DB (Supabase), localStorage | Artifact storage API is built in and free. localStorage not supported in Claude.ai artifacts. Supabase is overkill for a personal tool. |
+| Apr 2026 | Weekly review = Wednesday 9am reminder | Daily nudge, user-triggered only | Spaced repetition works best on a consistent cadence. Wednesday gives a mid-week energy check. User can still trigger manually anytime. |
+| Apr 2026 | Build before Maven course ingestion | Wait for all content before building | Waiting for perfect input set delays learning. MVP works without Maven materials. Add them in v2 when available. |
