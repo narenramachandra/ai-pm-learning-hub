@@ -1,0 +1,3 @@
+[submodule "app/data/lenny"]
+	path = app/data/lenny
+	url = https://github.com/narenramachandra/lenny-data.git
