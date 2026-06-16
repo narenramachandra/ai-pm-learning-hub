@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Fallbacks for the design tokens the hub component references.
+     These came from the claude.ai artifact environment and don't exist
+     in this app, so define them here to render styled correctly.
+     (Font tokens are defined after the @theme block below so their
+     system-font fallback chain wins over @theme's bare Geist values.) */
+  --color-text-primary: #1f1f1f;
+  --color-text-secondary: #6b6b6b;
+  --color-text-info: #2563eb;
+  --color-text-warning: #92400e;
+
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f5f4f1;
+  --color-background-warning: #fef6e7;
+
+  --color-border-secondary: #cfcdc7;
+  --color-border-tertiary: #e7e5e0;
+  --color-border-warning: #f0d28a;
+
+  --border-radius-md: 6px;
+  --border-radius-lg: 12px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Declared after @theme so the richer system-font fallback chain wins. */
+:root {
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
