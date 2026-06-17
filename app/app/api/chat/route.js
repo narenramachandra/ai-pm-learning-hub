@@ -77,45 +77,75 @@ function buildFallbackResponse(query) {
   return { content: [{ type: "text", text: raw }] };
 }
 
+// Abort the upstream call if it stalls, so a hung MCP/web_search surfaces as a
+// clear timeout in the logs instead of an indefinite hang.
+const TIMEOUT_MS = 60000;
+
 export async function POST(request) {
   const { messages } = await request.json();
+  const startedAt = Date.now();
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const query = typeof lastUser?.content === "string" ? lastUser.content : "";
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        // MCP connector requires this beta header on the real API.
-        "anthropic-beta": "mcp-client-2025-11-20",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1500,
-        system: SYS,
-        messages,
-        mcp_servers: [
-          process.env.LENNY_MCP_TOKEN
-            ? { ...MCP, authorization_token: process.env.LENNY_MCP_TOKEN }
-            : MCP,
-        ],
-        tools: [WEB_SEARCH, MCP_TOOLSET],
-      }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let res, data;
+    try {
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          // MCP connector requires this beta header on the real API.
+          "anthropic-beta": "mcp-client-2025-11-20",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 1500,
+          system: SYS,
+          messages,
+          mcp_servers: [
+            process.env.LENNY_MCP_TOKEN
+              ? { ...MCP, authorization_token: process.env.LENNY_MCP_TOKEN }
+              : MCP,
+          ],
+          tools: [WEB_SEARCH, MCP_TOOLSET],
+        }),
+        signal: controller.signal,
+      });
+      data = await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
 
-    const data = await res.json();
     if (data.error) {
-      console.error("Anthropic error response:", res.status, JSON.stringify(data));
-      throw new Error(data.error.message);
+      const msg = data.error.message || "";
+      // Categorize so the log says exactly WHY the fallback fired.
+      const kind = /authoriz|token|mcp server/i.test(msg)
+        ? "MCP auth/token failure (token expired or invalid?)"
+        : /rate.?limit/i.test(msg)
+        ? "rate limited"
+        : /credit balance/i.test(msg)
+        ? "billing (out of credits)"
+        : `${data.error.type || "api"} error`;
+      console.error(
+        `[/api/chat] live call FAILED → ${kind} | HTTP ${res.status} | ${Date.now() - startedAt}ms | ${msg} → local fallback`
+      );
+      return Response.json(buildFallbackResponse(query));
     }
 
     return Response.json(data);
   } catch (err) {
-    console.error("Live API call failed:", err);
-    // Request-level fallback: the MCP-backed call failed → local Markdown archive.
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    const query = typeof lastUser?.content === "string" ? lastUser.content : "";
+    // Network failure, JSON parse error, or the timeout above.
+    const reason =
+      err?.name === "AbortError"
+        ? `TIMEOUT after ${TIMEOUT_MS / 1000}s`
+        : `${err?.name || "Error"}: ${err?.message || err}`;
+    console.error(
+      `[/api/chat] live call FAILED → ${reason} | ${Date.now() - startedAt}ms → local fallback`
+    );
     return Response.json(buildFallbackResponse(query));
   }
 }

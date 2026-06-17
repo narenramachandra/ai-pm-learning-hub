@@ -84,17 +84,25 @@ function extractGuestAuthor(body) {
 export function searchLocalLenny(query) {
   const files = collectMarkdown(DATA_DIR);
 
-  // Drop short words and stopwords so meaningful terms drive the match.
-  const terms = (query || "")
-    .toLowerCase()
-    .trim()
-    .split(/\s+/)
-    .filter((t) => t.length >= MIN_TERM_LEN && !STOPWORDS.has(t));
+  // Tokenize on non-alphanumerics (so "activation?" → "activation"), drop short
+  // words and stopwords, and dedupe so a repeated word isn't counted twice.
+  const terms = [
+    ...new Set(
+      (query || "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((t) => t.length >= MIN_TERM_LEN && !STOPWORDS.has(t))
+    ),
+  ];
 
   // No usable terms (empty or all-stopword query) → no matches.
   if (terms.length === 0) return [];
 
-  const scored = [];
+  // First pass: per-file term occurrence counts + document frequency per term
+  // (df = how many files contain the term), used for IDF weighting below.
+  const candidates = [];
+  const df = Object.create(null);
+  let corpusSize = 0;
 
   for (const file of files) {
     let raw;
@@ -108,22 +116,31 @@ export function searchLocalLenny(query) {
 
     // Only podcast/newsletter entries — skip anything else.
     if (!ALLOWED_TYPES.has((meta.type || "").toLowerCase())) continue;
+    corpusSize++;
 
     const haystack = [meta.title, meta.description, meta.tags, body]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
 
-    // Score = total occurrences of all terms; skip files with no match.
-    const score = terms.reduce((sum, t) => sum + countOccurrences(haystack, t), 0);
-    if (score === 0) continue;
+    const counts = {};
+    let matched = false;
+    for (const t of terms) {
+      const c = countOccurrences(haystack, t);
+      if (c > 0) {
+        counts[t] = c;
+        df[t] = (df[t] || 0) + 1;
+        matched = true;
+      }
+    }
+    if (!matched) continue;
 
     const type = (meta.type || "").toLowerCase();
     // Podcast guests come from frontmatter; newsletter guests are parsed from body text.
     const guest = meta.guest || (type === "newsletter" ? extractGuestAuthor(body) : null) || null;
 
-    scored.push({
-      score,
+    candidates.push({
+      counts,
       source: {
         title: meta.title || path.basename(file, ".md"),
         creator: meta.channel || "Lenny Rachitsky",
@@ -136,7 +153,21 @@ export function searchLocalLenny(query) {
     });
   }
 
-  // Most relevant first.
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 6).map((s) => s.source);
+  // Second pass: IDF-weighted score so rare, meaningful terms (e.g. "activation",
+  // in ~94 files) outweigh ubiquitous ones (e.g. "think", in nearly every file).
+  // idf = ln(corpusSize / df); a term present in every file contributes ~0.
+  for (const cand of candidates) {
+    cand.score = 0;
+    for (const t in cand.counts) {
+      cand.score += cand.counts[t] * Math.log(corpusSize / df[t]);
+    }
+  }
+
+  // Most relevant first; tie-break by how many distinct query terms matched.
+  candidates.sort(
+    (a, b) =>
+      b.score - a.score ||
+      Object.keys(b.counts).length - Object.keys(a.counts).length
+  );
+  return candidates.slice(0, 6).map((c) => c.source);
 }
